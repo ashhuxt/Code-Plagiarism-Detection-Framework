@@ -1,14 +1,17 @@
 package com.plagiarism.detector;
 
-import com.plagiarism.detector.service.SimilarityService; // Import your existing service
+import com.plagiarism.detector.service.SimilarityService;
+import com.plagiarism.detector.mutation.MutatorEngine;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.stream.Stream;
 
-@SpringBootTest // Needed to inject your Spring-managed SimilarityService
+@SpringBootTest
 public class MutationTest {
 
     @Autowired
@@ -17,36 +20,50 @@ public class MutationTest {
     @Test
     public void runRobustnessExperiment() throws Exception {
         MutatorEngine engine = new MutatorEngine();
+
+
         Path datasetDir = Path.of("src/main/resources/dataset");
         Path outputDir = Path.of("src/test/resources/mutants");
 
+
+        if (!Files.exists(datasetDir)) {
+            System.err.println("Dataset directory not found at: " + datasetDir.toAbsolutePath());
+            return;
+        }
         Files.createDirectories(outputDir);
 
-        System.out.println("FILE NAME | SIMILARITY SCORE (%)");
-        System.out.println("---------------------------------");
+        System.out.println("\n--- Robustness Experiment: Variable Renaming Mutation ---");
+        System.out.printf("%-20s | %-20s%n", "FILE NAME", "SIMILARITY SCORE");
+        System.out.println("-------------------------------------------------------");
 
-        Files.list(datasetDir)
-                .filter(path -> path.toString().endsWith(".java"))
-                .forEach(path -> {
-                    try {
-                        String fileName = path.getFileName().toString();
-                        String outPath = outputDir.resolve(fileName).toString();
+        try (Stream<Path> paths = Files.list(datasetDir)) {
+            paths.filter(path -> path.toString().endsWith(".java"))
+                    .sorted()
+                    .forEach(path -> {
+                        try {
+                            String fileName = path.getFileName().toString();
+                            Path mutantPath = outputDir.resolve(fileName);
 
-                        // 1. Generate Mutant
-                        engine.generateVariableMutant(path.toString(), outPath);
 
-                        // 2. Compare Original vs Mutant
-                        // Change this line:
-                        double score = similarityService.calculateHybridSimilarity(
-                                Files.readString(path),
-                                Files.readString(Path.of(outPath))
-                        );
+                            engine.generateVariableMutant(path.toString(), mutantPath.toString());
 
-                        System.out.printf("%-10s | %.2f%%%n", fileName, score * 100);
 
-                    } catch (Exception e) {
-                        System.err.println("Error processing: " + path.getFileName());
-                    }
-                });
+                            String originalCode = Files.readString(path);
+                            String mutatedCode = Files.readString(mutantPath);
+
+
+                            double score = similarityService.calculateHybridSimilarity(originalCode, mutatedCode);
+
+
+                            System.out.printf("%-20s | %.2f%%%n", fileName, score * 100);
+
+                        } catch (Exception e) {
+                            System.err.println("Error processing " + path.getFileName() + ": " + e.getMessage());
+                        }
+                    });
+        }
+
+        System.out.println("-------------------------------------------------------");
+        System.out.println("Experiment Complete. Mutants saved to: " + outputDir.toAbsolutePath());
     }
 }

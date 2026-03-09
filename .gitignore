@@ -31,3 +31,9 @@ build/
 
 ### VS Code ###
 .vscode/
+# --- ACPDF Framework Specifics ---
+# Ignore the temporary mutants generated during the robustness experiment
+src/test/resources/mutants/*.java
+
+# Ignore the experiment results CSV if generated locally
+experiment_results.csv
